@@ -53,13 +53,13 @@ Then, use the following gradle command to run the tests in the build environment
 
 Mac:
 ```bash
-export environment="build"
-./gradlew clean test -Dcucumber.filter.tags="@$environment"
+export TEST_ENVIRONMENT="build"
+./gradlew clean test -Dcucumber.filter.tags="@$TEST_ENVIRONMENT"
 ```
 Windows:
 ```bash
-set environment="build"
-gradlew.bat clean test -Dcucumber.filter.tags="@%environmen%"
+set TEST_ENVIRONMENT="build"
+gradlew.bat clean test -Dcucumber.filter.tags="@%TEST_ENVIRONMENT%"
 ```
 
 To view the report produced, run the following command:
