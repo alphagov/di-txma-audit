@@ -271,7 +271,7 @@ describe('Unit test for app handler', function () {
             }
         );
         expect(consoleMock).toHaveBeenCalledTimes(3);
-        expect(consoleMock).toHaveBeenNthCalledWith(1, '[WARN] UNKNOWN FIELDS\n{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"AUTHENTICATION_ATTEMPT","timestamp":"1609462861","message":"Unknown fields in message.","unknownFields":[{"key":"new_unknown_field","fieldName":"AuditEvent"},{"key":"unknown_user_field","fieldName":"User"}]}');
+        expect(consoleMock).toHaveBeenNthCalledWith(1, '[WARN] UNKNOWN FIELDS\n{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"AUTHENTICATION_ATTEMPT","componentId":"1234","timestamp":"1609462861","message":"Unknown fields in message.","unknownFields":[{"key":"new_unknown_field","fieldName":"AuditEvent"},{"key":"unknown_user_field","fieldName":"User"}]}');
         expect(consoleMock).toHaveBeenNthCalledWith(2, 'Topic ARN: SOME-SNS-TOPIC');
         expect(consoleMock).toHaveBeenNthCalledWith(3, 'MessageID is 1');
     });
@@ -403,7 +403,7 @@ describe('Unit test for app handler', function () {
         expect(consoleMock).toHaveBeenNthCalledWith(2, 'MessageID is 1');
         expect(consoleMock).toHaveBeenNthCalledWith(3, 'Topic ARN: SOME-SNS-TOPIC');
         expect(consoleMock).toHaveBeenNthCalledWith(4, 'MessageID is 2');
-        expect(consoleMock).toHaveBeenNthCalledWith(5, '[ERROR] VALIDATION ERROR\n{"requireFieldError":{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"","timestamp":"1609462861","requiredField":"event_name","message":"event_name is a required field."}}');
+        expect(consoleMock).toHaveBeenNthCalledWith(5, '[ERROR] VALIDATION ERROR\n{"requireFieldError":{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"","componentId":"1234","timestamp":"1609462861","requiredField":"event_name","message":"event_name is a required field."}}');
         expect(sns.publish).toHaveBeenCalledWith(
             {
                 Message: expectedResult,
@@ -492,7 +492,95 @@ describe('Unit test for app handler', function () {
         expect(consoleMock).toHaveBeenNthCalledWith(2, 'MessageID is 1');
         expect(consoleMock).toHaveBeenNthCalledWith(3, 'Topic ARN: SOME-SNS-TOPIC');
         expect(consoleMock).toHaveBeenNthCalledWith(4, 'MessageID is 2');
-        expect(consoleMock).toHaveBeenNthCalledWith(5, '[ERROR] VALIDATION ERROR\n{"requireFieldError":{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"AUTHENTICATION_ATTEMPT","requiredField":"timestamp","message":"timestamp is a required field."}}');
+        expect(consoleMock).toHaveBeenNthCalledWith(5, '[ERROR] VALIDATION ERROR\n{"requireFieldError":{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"AUTHENTICATION_ATTEMPT","componentId":"1234","timestamp":"0","requiredField":"timestamp","message":"timestamp is a required field."}}');
+        expect(sns.publish).toHaveBeenCalledWith(
+            {
+                Message: expectedResult,
+                TopicArn: 'SOME-SNS-TOPIC',
+                MessageAttributes: {
+                    eventName: {
+                        DataType: 'String',
+                        StringValue: 'AUTHENTICATION_ATTEMPT',
+                    },
+                },
+            }
+        );
+    });
+
+    it('logs an error when validation fails on component id', async () => {
+        const expectedResult =
+            '{"event_id":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","client_id":"some-client","timestamp":1609462861,"timestamp_formatted":"2021-01-23T15:43:21.842","event_name":"AUTHENTICATION_ATTEMPT","component_id":"1234","user":{"transaction_id":"a52f6f87","email":"foo@bar.com","phone":"07711223344","ip_address":"100.100.100.100","session_id":"c222c1ec","persistent_session_id":"some session id","govuk_signin_journey_id":"43143-233Ds-2823-283-dj299j1"},"platform":{"xray_trace_id":"24727sda4192"},"restricted":{"experian_ref":"DSJJSEE29392"},"extensions":{"response":"Authentication successful"}}';
+
+        const exampleMessage: IAuditEvent = {
+            event_id: '66258f3e-82fc-4f61-9ba0-62424e1f06b4',
+            client_id: 'some-client',
+            timestamp: 1609462861,
+            timestamp_formatted: '2021-01-23T15:43:21.842',
+            event_name: 'AUTHENTICATION_ATTEMPT',
+            component_id: '1234',
+            user: {
+                transaction_id: 'a52f6f87',
+                email: 'foo@bar.com',
+                phone: '07711223344',
+                ip_address: '100.100.100.100',
+                session_id: 'c222c1ec',
+                persistent_session_id: 'some session id',
+                govuk_signin_journey_id: '43143-233Ds-2823-283-dj299j1',
+            },
+            platform: {
+                xray_trace_id: '24727sda4192',
+            },
+            restricted: {
+                experian_ref: 'DSJJSEE29392',
+            },
+            extensions: {
+                response: 'Authentication successful',
+            },
+        };
+
+        const exampleInvalidMessage: IAuditEvent = {
+            event_id: '66258f3e-82fc-4f61-9ba0-62424e1f06b4',
+            client_id: 'some-client',
+            timestamp: 1609462861,
+            timestamp_formatted: '2021-01-23T15:43:21.842',
+            event_name: 'AUTHENTICATION_ATTEMPT',
+            component_id: '',
+            user: {
+                transaction_id: 'a52f6f87',
+                email: 'foo@bar.com',
+                phone: '07711223344',
+                ip_address: '100.100.100.100',
+                govuk_signin_journey_id: '43143-233Ds-2823-283-dj299j1',
+                session_id: 'c222c1ec',
+                persistent_session_id: 'some session id',
+            },
+            platform: {
+                xray_trace_id: '24727sda4192',
+            },
+            restricted: {
+                experian_ref: 'DSJJSEE29392',
+            },
+            extensions: {
+                response: 'Authentication successful',
+            },
+        };
+
+        (sns.publish().promise as MockedFunction<any>).mockResolvedValueOnce({Success: 'OK', MessageId: "1" });
+        (sns.publish().promise as MockedFunction<any>).mockResolvedValueOnce({Success: 'OK', MessageId: "2" });
+
+        const sqsEvent = TestHelper.createSQSEventWithEncodedMessage(TestHelper.encodeAuditEvent(exampleMessage), 2);
+        const sqsEventWithInvalidMessage = TestHelper.createSQSEventWithEncodedMessage(TestHelper.encodeAuditEvent(exampleInvalidMessage));
+
+        sqsEvent.Records.push(...sqsEventWithInvalidMessage.Records)
+
+        await handler(sqsEvent);
+
+        expect(consoleMock).toHaveBeenCalledTimes(5);
+        expect(consoleMock).toHaveBeenNthCalledWith(1, 'Topic ARN: SOME-SNS-TOPIC');
+        expect(consoleMock).toHaveBeenNthCalledWith(2, 'MessageID is 1');
+        expect(consoleMock).toHaveBeenNthCalledWith(3, 'Topic ARN: SOME-SNS-TOPIC');
+        expect(consoleMock).toHaveBeenNthCalledWith(4, 'MessageID is 2');
+        expect(consoleMock).toHaveBeenNthCalledWith(5, '[ERROR] VALIDATION ERROR\n{"requireFieldError":{"sqsResourceName":"arn:aws:sqs:us-west-2:123456789012:SQSQueue","eventId":"66258f3e-82fc-4f61-9ba0-62424e1f06b4","eventName":"AUTHENTICATION_ATTEMPT","componentId":"","timestamp":"1609462861","requiredField":"component_id","message":"component_id is a required field."}}');
         expect(sns.publish).toHaveBeenCalledWith(
             {
                 Message: expectedResult,

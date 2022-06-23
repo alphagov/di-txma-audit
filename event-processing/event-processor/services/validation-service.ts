@@ -25,6 +25,7 @@ export class ValidationService {
                 sqsResourceName: eventSource,
                 eventId: eventMessage.event_id,
                 eventName: eventMessage.event_name,
+                componentId: eventMessage.component_id,
                 timestamp: eventMessage.timestamp.toString(),
                 message: 'Unknown fields in message.',
                 unknownFields: [],
@@ -47,6 +48,7 @@ export class ValidationService {
                     sqsResourceName: eventSource,
                     eventId: eventMessage.event_id,
                     eventName: eventMessage.event_name,
+                    componentId: eventMessage.component_id,
                     timestamp: eventMessage.timestamp.toString(),
                     requiredField: RequiredFieldsEnum.eventName,
                     message: 'event_name is a required field.',
@@ -62,9 +64,26 @@ export class ValidationService {
                     sqsResourceName: eventSource,
                     eventId: eventMessage.event_id,
                     eventName: eventMessage.event_name,
-                    timestamp: undefined,
+                    componentId: eventMessage.component_id,
+                    timestamp: eventMessage.timestamp.toString(),
                     requiredField: RequiredFieldsEnum.timestamp,
                     message: 'timestamp is a required field.',
+                },
+            };
+        }
+
+        if (!eventMessage.component_id) {
+            return {
+                isValid: false,
+                message: AuditEvent.toJSON(eventMessage as IAuditEvent),
+                error: {
+                    sqsResourceName: eventSource,
+                    eventId: eventMessage.event_id,
+                    eventName: eventMessage.event_name,
+                    componentId: eventMessage.component_id,
+                    timestamp: eventMessage.timestamp.toString(),
+                    requiredField: RequiredFieldsEnum.componentId,
+                    message: 'component_id is a required field.',
                 },
             };
         }
