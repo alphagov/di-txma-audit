@@ -49,20 +49,25 @@ Our other event-processing accounts for these tests are:
 For a private account, follow these [steps to set up temporary credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html).
 
 ## Running the script
-Then, use the following gradle command to run the tests in the build environment
+Then, use the following gradle command to run the tests in the build environment. 
+The `TEST_ENVIRONMENT` is the environment you are running the test in.
+The `TEST_REPORT_DIR` is the location to output the report
 
 Mac:
 ```bash
 export TEST_ENVIRONMENT="build"
-./gradlew clean test -Dcucumber.filter.tags="@$TEST_ENVIRONMENT"
+export TEST_REPORT_DIR="report"
+./gradlew clean test
 ```
 Windows:
 ```bash
 set TEST_ENVIRONMENT="build"
-gradlew.bat clean test -Dcucumber.filter.tags="@%TEST_ENVIRONMENT%"
+set TEST_REPORT_DIR="report"
+gradlew.bat clean
 ```
 
 To view the report produced, run the following command:
 ``` bash
 open build/reports/tests/test/index.html
 ```
+Or view one of the other produced reports in the `TEST_REPORT_DIR` directory.
