@@ -1,6 +1,27 @@
 {
+  "event_id": "529f-dece-615e-dipv",
+  "client_id": "IPV",
   "timestamp": 1647969131,
   "timestamp_formatted": "2022-03-22T17:12:11.000Z",
   "event_name": "AUTH_UPDATE_CLIENT_REQUEST_ERROR",
-  "component_id": ""
+  "component_id": "",
+  "user": {
+    "transaction_id": "4ce55ddb566125f16089d3922807ae1292b2469f5fc7053765f409e136b5a75a",
+    "email": "1c87ec8fe1e1de279f84e4eb58d7df393f021e28e1a9a7ed7c88683a2b11eca6",
+    "phone": "e951087cc247da7a047cab7011393972a08e732c28c3af48684c8fbadf492bb2",
+    "ip_address": "181.246.129.108",
+    "session_id": "8casd82c",
+    "persistent_session_id": "...",
+    "govuk_signin_journey_id": "915b-e4a4-6bg2-b8dd",
+    "user_id": "user_001"
+  },
+  "platform": {
+    "xray_trace_id": "24727sda4192"
+  },
+  "restricted": {
+    "experian_ref": "7a4639b0bcd4dbc6f8b565b8adfa0c6df391cc107bba62e0a5e13c207dc6fe0f"
+  },
+  "extensions": {
+    "response": "Authentification successful"
+  }
 }

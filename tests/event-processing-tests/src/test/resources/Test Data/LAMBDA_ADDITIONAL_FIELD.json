@@ -12,7 +12,8 @@
     "ip_address": "181.246.129.108",
     "govuk_signin_journey_id": "915b-e4a4-6bg2-b8dd",
     "session_id": "8casd82c",
-    "persistent_session_id": "..."
+    "persistent_session_id": "...",
+    "user_id": "user_001"
   },
   "platform": {
     "xray_trace_id": "24727sda4192"

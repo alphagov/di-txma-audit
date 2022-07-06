@@ -22,27 +22,32 @@ Parameters:
       - "integration"
       - "production"
     ConstraintDescription: must be dev, build, staging, integration or production
+  TestRoleArn:
+    Type: "String"
+    Description: "The ARN of the role that will used for integration tests"
+    Default: "none"
+    AllowedPattern: "(none)|(arn:aws:iam::.*:role/.*)"
 
 Conditions:
-  SetPermissionsBoundary:
-    Fn::Not:
-      - Fn::Equals:
-          - !Ref PermissionsBoundary
-          - "none"
-  UseCodeSigning:
-    Fn::Not:
-      - Fn::Equals:
-          - !Ref CodeSigningConfigArn
-          - "none"
-  IsStagingOrIntegration: !Or
-  - !Equals [ !Ref Environment, integration ]
-  - !Equals [ !Ref Environment, staging ]
+  UsePermissionsBoundary: !Not [ !Equals [ !Ref PermissionsBoundary, "none" ] ]
+  UseCodeSigning: !Not [ !Equals [ !Ref CodeSigningConfigArn, "none" ] ]
+  UseTestRole: !Not [ !Equals [ !Ref TestRoleArn, "none" ]]
   IsProductionOrStaging: !And
     - !Not [!Equals [ !Ref Environment, dev]]
     - !Not [!Equals [ !Ref Environment, build]]
   IsBuild: !Or
     - !Equals [ !Ref Environment, dev ]
     - !Equals [ !Ref Environment, build ]
+  IsTestStage: !Or
+    - !Equals [ !Ref Environment, build ]
+    - !Equals [ !Ref Environment, staging ]
+  DeployTestPolicy: !And
+    - !Condition IsTestStage
+    - !Condition UseTestRole
+  DeployTestPolicyForBucket: !And
+    - !Condition IsTestStage
+    - !Condition UseTestRole
+    - !Condition IsBuild
 
 Globals:
   Function:
@@ -51,7 +56,7 @@ Globals:
       - !Ref CodeSigningConfigArn
       - !Ref AWS::NoValue
     PermissionsBoundary: !If
-      - SetPermissionsBoundary
+      - UsePermissionsBoundary
       - !Ref PermissionsBoundary
       - !Ref AWS::NoValue
     Architectures:
@@ -229,15 +234,16 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: "EventProcessorFunction-KBV"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt KBVLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "KBV"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -246,7 +252,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
   KBVEventProcessorUnknownFieldsErrorMetric:
     DependsOn:
@@ -307,7 +313,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-KBV"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -326,7 +332,7 @@ Resources:
     DependsOn:
       - KBVEventProcessorFunction
     Type: AWS::Lambda::EventSourceMapping
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       EventSourceArn: "{{resolve:ssm:KBVQueueARN}}"
       FunctionName: !Ref KBVEventProcessorFunction
@@ -335,7 +341,7 @@ Resources:
     DependsOn:
       - KBVLambdaAccessRole
     Type: AWS::IAM::Policy
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       Roles:
         - !Ref KBVLambdaAccessRole
@@ -363,15 +369,16 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       FunctionName: "EventProcessorFunction-KBVAddress"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt KBVAddressLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "KBV-Address"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -380,7 +387,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
   KBVAddressEventProcessorUnknownFieldsErrorMetric:
     DependsOn:
@@ -441,7 +448,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-KBVAddress"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -460,7 +467,7 @@ Resources:
     DependsOn:
       - KBVAddressEventProcessorFunction
     Type: AWS::Lambda::EventSourceMapping
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       EventSourceArn: "{{resolve:ssm:KBVAddressQueueARN}}"
       FunctionName: !Ref KBVAddressEventProcessorFunction
@@ -469,7 +476,7 @@ Resources:
     DependsOn:
       - KBVAddressLambdaAccessRole
     Type: AWS::IAM::Policy
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       Roles:
         - !Ref KBVAddressLambdaAccessRole
@@ -497,15 +504,16 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       FunctionName: "EventProcessorFunction-KBVFraud"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt KBVFraudLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "KBV-Fraud"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -514,7 +522,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
   KBVFraudEventProcessorUnknownFieldsErrorMetric:
     DependsOn:
@@ -575,7 +583,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-KBVFraud"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -594,7 +602,7 @@ Resources:
     DependsOn:
       - KBVFraudEventProcessorFunction
     Type: AWS::Lambda::EventSourceMapping
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       EventSourceArn: "{{resolve:ssm:KBVFraudQueueARN}}"
       FunctionName: !Ref KBVFraudEventProcessorFunction
@@ -603,7 +611,7 @@ Resources:
     DependsOn:
       - KBVFraudLambdaAccessRole
     Type: AWS::IAM::Policy
-    Condition: IsStagingOrIntegration #Not Prod
+    Condition: IsProductionOrStaging
     Properties:
       Roles:
         - !Ref KBVFraudLambdaAccessRole
@@ -631,15 +639,16 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       FunctionName: "EventProcessorFunction-IPV"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt IPVLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "IPV"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -648,7 +657,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
 
   IPVEventProcessorUnknownFieldsErrorMetric:
@@ -710,7 +719,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-IPV"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -766,15 +775,16 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       FunctionName: "EventProcessorFunction-IPVPass"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt IPVPassLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "IPV-Pass"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -783,7 +793,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
   IPVPassEventProcessorUnknownFieldsErrorMetric:
     DependsOn:
@@ -844,7 +854,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-IPVPass"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -900,15 +910,16 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       FunctionName: "EventProcessorFunction-SPOT"
-      CodeUri: ../event-processing/event-processor
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: event-processor-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt SPOTLambdaAccessRole.Arn
       Environment:
         Variables:
           topicArn: !Ref epSNSTopic
+          defaultComponentId: "SPOT"
       KmsKeyArn: !GetAtt LambdaKMSKey.Arn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -917,7 +928,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - event-processor-app.ts
 
   SPOTEventProcessorUnknownFieldsErrorMetric:
     DependsOn:
@@ -978,7 +989,7 @@ Resources:
     Properties:
       RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-SPOT"
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -1056,6 +1067,7 @@ Resources:
               ForAnyValue:ArnEquals:
                 "aws:PrincipalArn":
                   - !GetAtt ObfuscationFunction.Arn
+                  - !GetAtt CleanserFunction.Arn
 #                  - !GetAtt ReIngestFunction.Arn
 
   FireHoseKMSKeyAlias:
@@ -1282,7 +1294,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -1376,7 +1388,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -1429,7 +1441,7 @@ Resources:
               - 'lambda:InvokeFunction'
               - 'lambda:GetFunctionConfiguration'
             Resource:
-              - !Sub "${ObfuscationFunction.Arn}*"
+              - !Sub "${CleanserFunction.Arn}*"
           - Effect: Allow
             Action:
               - 'logs:CreateLogGroup'
@@ -1470,7 +1482,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -1625,7 +1637,7 @@ Resources:
                 - Type: Lambda
                   Parameters:
                     - ParameterName: LambdaArn
-                      ParameterValue: !GetAtt ObfuscationFunction.Arn
+                      ParameterValue: !GetAtt CleanserFunction.Arn
                     - ParameterName: RoleArn
                       ParameterValue: !GetAtt PerformanceDeliveryStreamRole.Arn
           - !Ref "AWS::NoValue"
@@ -1653,7 +1665,7 @@ Resources:
                 - Type: Lambda
                   Parameters:
                     - ParameterName: LambdaArn
-                      ParameterValue: !GetAtt ObfuscationFunction.Arn
+                      ParameterValue: !GetAtt CleanserFunction.Arn
                     - ParameterName: RoleArn
                       ParameterValue: !GetAtt PerformanceDeliveryStreamRole.Arn
           - !Ref "AWS::NoValue"
@@ -1681,12 +1693,17 @@ Resources:
           - IPV_ADDRESS_CRI_START
           - IPV_ADDRESS_CRI_REQUEST_SENT
           - IPV_ADDRESS_CRI_VC_ISSUED
+          - IPV_ADDRESS_CRI_END
           - IPV_FRAUD_CRI_START
+          - IPV_FRAUD_CRI_REQUEST_SENT
           - IPV_FRAUD_CRI_VC_ISSUED
+          - IPV_FRAUD_CRI_THIRD_PARTY_REQUEST_ENDED
+          - IPV_FRAUD_CRI_END
           - IPV_KBV_CRI_START
           - IPV_KBV_CRI_REQUEST_SENT
           - IPV_KBV_CRI_VC_ISSUED
           - IPV_KBV_CRI_THIRD_PARTY_REQUEST_ENDED
+          - IPV_KBV_CRI_END
           - IPV_CRI_AUTH_RESPONSE_RECEIVED
           - IPV_VC_RECEIVED
           - IPV_JOURNEY_END
@@ -1754,7 +1771,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -1796,9 +1813,9 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: "ObfuscationFunction"
-      CodeUri: ../event-processing/obfuscation
+      CodeUri: ../event-processing/lambda
       PackageType: Zip
-      Handler: app.handler
+      Handler: obfuscation-app.handler
       Runtime: nodejs14.x
       Timeout: 30
       Role: !GetAtt ObfuscationFunctionRole.Arn
@@ -1813,7 +1830,7 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - app.ts
+          - obfuscation-app.ts
 
   HMACSecretAuthAccessPolicy:
     DependsOn:
@@ -1840,6 +1857,52 @@ Resources:
             Principal:
               AWS: !GetAtt ObfuscationFunctionRole.Arn
 
+  CleanserFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      PermissionsBoundary: !If
+        - UsePermissionsBoundary
+        - !Ref PermissionsBoundary
+        - !Ref AWS::NoValue
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole"
+
+  CleanserLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt LogsKmsKey.Arn
+      LogGroupName: "/aws/lambda/CleanserFunction"
+      RetentionInDays: 7
+
+  CleanserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: "CleanserFunction"
+      CodeUri: ../event-processing/lambda
+      PackageType: Zip
+      Handler: cleanser-app.handler
+      Runtime: nodejs14.x
+      Timeout: 30
+      Role: !GetAtt CleanserFunctionRole.Arn
+      KmsKeyArn: !GetAtt LambdaKMSKey.Arn
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - cleanser-app.ts
+
 #  ReIngestLogGroup:
 #    Type: AWS::Logs::LogGroup
 #    Properties:
@@ -1851,9 +1914,9 @@ Resources:
 #    Type: AWS::Serverless::Function
 #    Properties:
 #      FunctionName: "Re-IngestFunction"
-#      CodeUri: ../event-processing/re-ingest
+#      CodeUri: ../event-processing/lambda
 #      PackageType: Zip
-#      Handler: app.handler
+#      Handler: re-ingest-app.handler
 #      Runtime: nodejs14.x
 #      Timeout: 30
 #      Events:
@@ -1883,4 +1946,92 @@ Resources:
 #        Target: "es2020"
 #        Sourcemap: true
 #        EntryPoints:
-#          - app.ts
+#          - re-ingest-app.ts
+
+  #
+  # Test Role Permissions
+  #
+
+  KBVTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KBVEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  KBVAddressTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KBVAddressEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  KBVFraudTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref KBVFraudEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  IPVTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IPVEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  IPVPassTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IPVPassEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  SPOTTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SPOTEventProcessorFunction
+      Principal: !Ref TestRoleArn
+
+  FraudSplunkTestBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: DeployTestPolicyForBucket
+    Properties:
+      Bucket: !Ref FraudSplunkDeliveryTestBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Resource:
+              - !GetAtt FraudSplunkDeliveryTestBucket.Arn
+              - !Sub '${FraudSplunkDeliveryTestBucket.Arn}/*'
+            Principal:
+              AWS: !Ref TestRoleArn
+            Action:
+              - 's3:GetObject'
+              - 's3:ListBucket'
+
+  PerformanceSplunkTestBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: DeployTestPolicyForBucket
+    Properties:
+      Bucket: !Ref PerformanceSplunkDeliveryTestBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Resource:
+              - !GetAtt PerformanceSplunkDeliveryTestBucket.Arn
+              - !Sub '${PerformanceSplunkDeliveryTestBucket.Arn}/*'
+            Principal:
+              AWS: !Ref TestRoleArn
+            Action:
+              - 's3:GetObject'
+              - 's3:ListBucket'

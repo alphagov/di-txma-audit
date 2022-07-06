@@ -38,11 +38,8 @@ jobs:
         uses: actions/setup-node@v3.0.0
         with:
           node-version: '14.x'
-      - name: Install Event Processor Dependencies
-        working-directory: ${{ env.eventProcessorDirectory }}/event-processor
-        run: yarn install --immutable --immutable-cache --check-cache
-      - name: Install Obfuscation Dependencies
-        working-directory: ${{ env.eventProcessorDirectory }}/obfuscation
+      - name: Install Lambda Dependencies
+        working-directory: ${{ env.eventProcessorDirectory }}/lambda
         run: yarn install --immutable --immutable-cache --check-cache
       - name: SAM Validate
         run: |
@@ -50,11 +47,8 @@ jobs:
       - name: SAM Build
         run: |
           sam build --template-file event-processing-template.yml --config-file config/samconfig-event-processing.toml --config-env ${{ env.environment }} --use-container --beta-features
-      - name: Test Event Processor
-        working-directory: ${{ env.eventProcessorDirectory }}/event-processor
-        run: yarn test
-      - name: Test Obfuscation
-        working-directory: ${{ env.eventProcessorDirectory }}/obfuscation
+      - name: Test Lambdas
+        working-directory: ${{ env.eventProcessorDirectory }}/lambda
         run: yarn test
       - name: Login to Amazon ECR
         id: login-ecr
@@ -65,7 +59,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_EVENT_PROCESSING }}
           ECR_REPOSITORY_STAGING: ${{ secrets.ECR_REPOSITORY_EVENT_PROCESSING_STAGING }}
-          ECR_REPOSITORY_INTEGRATION: ${{ secrets.ECR_REPOSITORY_EVENT_PROCESSING_INTEGRATION }}
           IMAGE_TAG: latest
         run: |
           docker build \
@@ -76,8 +69,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_STAGING:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_STAGING:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_INTEGRATION:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_INTEGRATION:$IMAGE_TAG
       - name: Deploy SAM app
         uses: alphagov/di-devplatform-upload-action@v2
         with:
@@ -121,7 +112,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_AUDIT }}
           ECR_REPOSITORY_STAGING: ${{ secrets.ECR_REPOSITORY_AUDIT_STAGING }}
-          ECR_REPOSITORY_INTEGRATION: ${{ secrets.ECR_REPOSITORY_AUDIT_INTEGRATION }}
           IMAGE_TAG: latest
         run: |
           docker build \
@@ -132,8 +122,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_STAGING:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY_STAGING:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY_INTEGRATION:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY_INTEGRATION:$IMAGE_TAG
       - name: Deploy SAM app
         uses: alphagov/di-devplatform-upload-action@v2
         with:

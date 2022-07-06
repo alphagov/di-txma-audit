@@ -22,22 +22,25 @@ Parameters:
       - "integration"
       - "production"
     ConstraintDescription: must be dev, build, staging, integration or production
+  TestRoleArn:
+    Type: "String"
+    Description: "The ARN of the role that will used for integration tests"
+    Default: "none"
+    AllowedPattern: "(none)|(arn:aws:iam::.*:role/.*)"
 
 Conditions:
-  SetPermissionsBoundary:
-    Fn::Not:
-      - Fn::Equals:
-          - !Ref PermissionsBoundary
-          - "none"
-  UseCodeSigning:
-    Fn::Not:
-      - Fn::Equals:
-          - !Ref CodeSigningConfigArn
-          - "none"
-  IsBuild:
-    Fn::Equals:
-      - !Ref Environment
-      - "build"
+  UsePermissionsBoundary: !Not [ !Equals [ !Ref PermissionsBoundary, "none" ] ]
+  UseCodeSigning: !Not [ !Equals [ !Ref CodeSigningConfigArn, "none" ] ]
+  UseTestRole: !Not [ !Equals [ !Ref TestRoleArn, "none" ]]
+  IsBuild: !Or
+    - !Equals [ !Ref Environment, dev ]
+    - !Equals [ !Ref Environment, build ]
+  IsTestStage: !Or
+    - !Equals [ !Ref Environment, build ]
+    - !Equals [ !Ref Environment, staging ]
+  DeployTestPolicy: !And
+    - !Condition IsTestStage
+    - !Condition UseTestRole
 
 Globals:
   Function:
@@ -46,7 +49,7 @@ Globals:
       - !Ref CodeSigningConfigArn
       - !Ref AWS::NoValue
     PermissionsBoundary: !If
-      - SetPermissionsBoundary
+      - UsePermissionsBoundary
       - !Ref PermissionsBoundary
       - !Ref AWS::NoValue
     Architectures:
@@ -232,7 +235,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -281,7 +284,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       PermissionsBoundary: !If
-        - SetPermissionsBoundary
+        - UsePermissionsBoundary
         - !Ref PermissionsBoundary
         - !Ref AWS::NoValue
       AssumeRolePolicyDocument:
@@ -311,3 +314,47 @@ Resources:
                 Action:
                   - 'kms:Decrypt'
                 Resource: '{{resolve:ssm:SNSKMSKeyARN}}'
+
+  #
+  # Test Role Permissions
+  #
+
+  MessageBatchTestBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: DeployTestPolicy
+    Properties:
+      Bucket: !Ref MessageBatchBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Resource:
+              - !GetAtt MessageBatchBucket.Arn
+              - !Sub '${MessageBatchBucket.Arn}/*'
+            Principal:
+              AWS: !Ref TestRoleArn
+            Action:
+              - 's3:GetObject'
+              - 's3:ListBucket'
+
+#  TestRolePolicy:
+#    Type: AWS::IAM::Policy
+#    Condition: DeployTestPolicy
+#    Properties:
+#      Roles:
+#        - !Select [ 1, !Split [ "/" , TestRoleArn ]]
+#      PolicyName: test_role_policy
+#      PolicyDocument:
+#        Version: 2012-10-17
+#        Statement:
+#          - Effect: Allow
+#            Action:
+#              - 'firehose:PutRecord'
+#            Resource:
+#              - !GetAtt AuditDeliveryStream.Arn
+#          - Effect: Allow
+#            Action:
+#              - 's3:GetObject'
+#              - 's3:ListBucket'
+#            Resource:
+#              - !GetAtt MessageBatchBucket.Arn

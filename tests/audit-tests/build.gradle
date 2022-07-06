@@ -1,3 +1,4 @@
+
 plugins {
     id 'java'
 }
@@ -27,5 +28,8 @@ tasks {
         dependsOn assemble, testClasses
         useJUnitPlatform ()
         systemProperty("cucumber.execution.parallel.enabled", true)
+        systemProperty("cucumber.junit-platform.naming-strategy", "long")
+        systemProperty("cucumber.filter.tags", "@"+System.getenv("TEST_ENVIRONMENT"))
+        systemProperty("cucumber.plugin", "pretty, json:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.json, junit:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.xml")
     }
 }
