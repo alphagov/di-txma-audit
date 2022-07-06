@@ -5,7 +5,7 @@
 This directory contains the automation tests for the Event Processing side of the TxMA service.
 The tests have been written to ensure that all the components within the TxMA Event Processing account are connected and any messages which pass through are manipulated as expected.
 
-These tests do not cover what the unit tests, within the Event Processing code, cover.
+These tests do not cover what the unit tests, within [the Event Processing code](https://github.com/alphagov/di-txma-audit/tree/main/event-processing/lambda/tests/unit), cover.
 
 The tests will test the configuration in the `dev`, `build`, and `staging` environments.
 
@@ -24,13 +24,13 @@ The tests will test the configuration in the `dev`, `build`, and `staging` envir
 
 ### Create your project
 
-Firstly, clone the `di-txma-audit` repository.
+Firstly, clone the `di-txma-audit` repository, you will need to [deploy the event processing AWS services](https://github.com/alphagov/di-txma-audit/blob/main/event-processing/README.md).
 
 After this, navigate to the `di-txma-audit/tests/event-processing-tests`.
 
 ### Setting up your temporary credentials
 
-Then, you need to set your environment variables to match temporary credentials for your AWS account.
+You need to set your environment variables to match temporary credentials for your AWS account.
 
 #### Using the GDS CLI
 You can generate your temporary credentials for the build environment by using the following command:
@@ -38,8 +38,7 @@ You can generate your temporary credentials for the build environment by using t
 gds aws di-txma-build -e
 ```
 and setting the access key, secret access key, and session token in the terminal. <br>
-For Mac, simply copy the final three lines produced by the previous command and run them. <br>
-For Windows, [set the environment variables](https://phoenixnap.com/kb/windows-set-environment-variable) to the values produced.
+To do this, copy the output of the previous command and run them (paste) in the termainal or command line.
 
 Our other event-processing accounts for these tests are:
 `di-txma-event-processing-dev`
@@ -49,8 +48,8 @@ Our other event-processing accounts for these tests are:
 For a private account, follow these [steps to set up temporary credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html).
 
 ## Running the script
-Then, use the following gradle command to run the tests in the build environment. 
-The `TEST_ENVIRONMENT` is the environment you are running the test in.
+Then, use the following gradle command to run the tests in the build environment. <br>
+The `TEST_ENVIRONMENT` is the environment you are running the test in. <br>
 The `TEST_REPORT_DIR` is the location to output the report
 
 Mac:
