@@ -197,6 +197,7 @@ Resources:
       - IPVLambdaAccessRole
       - IPVPassLambdaAccessRole
       - SPOTLambdaAccessRole
+      - AuthLambdaAccessRole
     Type: AWS::IAM::Policy
     Properties:
       Roles:
@@ -206,6 +207,7 @@ Resources:
         - !Ref IPVLambdaAccessRole
         - !Ref IPVPassLambdaAccessRole
         - !Ref SPOTLambdaAccessRole
+        - !Ref AuthLambdaAccessRole
       PolicyName: sns_publish_policy
       PolicyDocument:
         Version: 2012-10-17
@@ -1029,6 +1031,141 @@ Resources:
             Action:
               - 'kms:Decrypt'
             Resource: '{{resolve:ssm:SPOTKmsArn}}'
+
+  AuthEventProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      KmsKeyId: !GetAtt LogsKmsKey.Arn
+      LogGroupName: "/aws/lambda/EventProcessorFunction-Auth"
+      RetentionInDays: 7
+
+  AuthEventProcessorFunction:
+    DependsOn:
+      - AuthEventProcessorLogGroup
+      - AuthLambdaAccessRole
+    Type: "AWS::Serverless::Function"
+    Properties:
+      FunctionName: "EventProcessorFunction-Auth"
+      CodeUri: ../event-processing/lambda
+      PackageType: Zip
+      Handler: event-processor-app.handler
+      Runtime: nodejs14.x
+      Timeout: 30
+      Role: !GetAtt AuthLambdaAccessRole.Arn
+      Environment:
+        Variables:
+          topicArn: !Ref epSNSTopic
+          defaultComponentId: "Auth"
+      KmsKeyArn: !GetAtt LambdaKMSKey.Arn
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - event-processor-app.ts
+
+  AuthEventProcessorUnknownFieldsErrorMetric:
+    DependsOn:
+      - AuthEventProcessorFunction
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: "WARN UNKNOWN FIELDS"
+      LogGroupName: "/aws/lambda/EventProcessorFunction-Auth"
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: "lambda/di/txma/errors"
+          MetricName: "Unknown Fields Auth"
+
+  AuthEventProcessorUnknownFieldsAlarm:
+    DependsOn:
+      - AuthEventProcessorUnknownFieldsErrorMetric
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Auth Event Processor Unknown Fields Alarm"
+      AlarmName: "UnknownFieldsAlarm-Auth"
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Period: 86400
+      Threshold: 1
+      MetricName: "Unknown Fields Auth"
+      Namespace: "lambda/di/txma/errors"
+
+  AuthEventProcessorRequiredFieldsErrorMetric:
+    DependsOn:
+      - AuthEventProcessorFunction
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: "ERROR VALIDATION ERROR"
+      LogGroupName: "/aws/lambda/EventProcessorFunction-Auth"
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: "lambda/di/txma/errors"
+          MetricName: "Validation Errors Auth"
+
+  AuthEventProcessorRequiredFieldsAlarm:
+    DependsOn:
+      - AuthEventProcessorRequiredFieldsErrorMetric
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Auth Event Processor Required Fields Alarm"
+      AlarmName: "RequiredFieldsAlarm-Auth"
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Period: 86400
+      Threshold: 1
+      MetricName: "Validation Errors Auth"
+      Namespace: "lambda/di/txma/errors"
+
+  AuthLambdaAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-LambdaAccessRole-Auth"
+      PermissionsBoundary: !If
+        - UsePermissionsBoundary
+        - !Ref PermissionsBoundary
+        - !Ref AWS::NoValue
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+
+  AuthLambdaEventSourceMapping:
+    DependsOn:
+      - AuthEventProcessorFunction
+    Type: AWS::Lambda::EventSourceMapping
+    Condition: IsProductionOrStaging
+    Properties:
+      EventSourceArn: "{{resolve:ssm:AuthQueueARN}}"
+      FunctionName: !Ref AuthEventProcessorFunction
+
+  AuthKMSPolicy:
+    DependsOn:
+      - AuthLambdaAccessRole
+    Type: AWS::IAM::Policy
+    Condition: IsProductionOrStaging
+    Properties:
+      Roles:
+        - !Ref AuthLambdaAccessRole
+      PolicyName: auth_kms_policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'kms:Decrypt'
+            Resource:
+              - "{{resolve:ssm:AuthKmsArn}}"
 
   FireHoseKMSKey:
     Type: AWS::KMS::Key
@@ -2050,6 +2187,14 @@ Resources:
       FunctionName: !Ref SPOTEventProcessorFunction
       Principal: !Ref TestRoleArn
 
+  AuthTestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Condition: DeployTestPolicy
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthEventProcessorFunction
+      Principal: !Ref TestRoleArn
+      
   FraudSplunkTestBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Condition: DeployTestPolicyForBucket
