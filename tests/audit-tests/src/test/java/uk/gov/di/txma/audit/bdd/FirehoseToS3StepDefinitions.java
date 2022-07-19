@@ -27,8 +27,8 @@ import software.amazon.awssdk.services.firehose.model.PutRecordResponse;
 import software.amazon.awssdk.services.firehose.model.Record;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
-import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
@@ -131,15 +131,18 @@ public class FirehoseToS3StepDefinitions {
             output = null;
             findLatestKeys();
 
-            // Splits the batched outputs into individual jsons
-            List<JSONObject> array = separate(output);
+            // If an object was found
+            if (output != null) {
+                // Splits the batched outputs into individual jsons
+                List<JSONObject> array = separate(output);
 
 
-            // Compares all individual jsons with our test data
-            for (JSONObject object : array) {
-                if (object.similar(expectedS3)) {
-                    foundInS3 = true;
-                    break;
+                // Compares all individual jsons with our test data
+                for (JSONObject object : array) {
+                    if (object.similar(expectedS3)) {
+                        foundInS3 = true;
+                        break;
+                    }
                 }
             }
         }
@@ -218,46 +221,78 @@ public class FirehoseToS3StepDefinitions {
      */
     private void findLatestKeys(){
         String bucketName = "audit-" + System.getenv("TEST_ENVIRONMENT") + "-message-batch";
+        // The list of the latest two keys
+        List<String> keys = new ArrayList<>();
 
         // Opens an S3 client
         try (S3Client s3 = S3Client.builder()
                 .region(region)
                 .build()){
 
-            // Lists all objects
-            ListObjectsRequest listObjects = ListObjectsRequest
+            // Lists latest 1000 objects
+            ListObjectsV2Request listObjects = ListObjectsV2Request
                     .builder()
                     .bucket(bucketName)
                     .build();
 
-            // Finds the latest object
-            ListObjectsResponse res = s3.listObjects(listObjects);
+            // Stored the objects
+            ListObjectsV2Response res = s3.listObjectsV2(listObjects);
             List<S3Object> objects = res.contents();
 
-            // This makes sure that there are at least two logs
-            if (objects.size() > 1) {
-                // This is the latest keys
-                String latestKey = objects.get(objects.size() - 1).key();
-                String previousKey = objects.get(objects.size() - 2).key();
-
-                output = "";
-                StringBuilder str = new StringBuilder(output);
-                for (String key : new String[]{latestKey, previousKey}){
-                    // Gets the new object
-                    GetObjectRequest objectRequest = GetObjectRequest
-                            .builder()
-                            .key(key)
-                            .bucket(bucketName)
-                            .build();
-
-                    // Reads the new object
-                    GZIPInputStream gzinpstr = new GZIPInputStream(s3.getObject(objectRequest));
-                    InputStreamReader inpstr = new InputStreamReader(gzinpstr);
-                    BufferedReader read = new BufferedReader(inpstr);
-                    str.append(read.readLine());
-                }
-                output = str.toString();
+            // If no objects were found, returns
+            if (res.keyCount()==0){
+                return;
             }
+
+            // Stores the most recent two keys
+            keys.add(objects.get(objects.size() - 1).key());
+            if (res.keyCount() > 1){
+                keys.add(objects.get(objects.size() - 2).key());
+            }
+
+            // If more than 1000 objects, cycles through the rest
+            while (res.isTruncated()){
+                // Gets the next batch
+                listObjects = ListObjectsV2Request
+                        .builder()
+                        .bucket(bucketName)
+                        .continuationToken(res.nextContinuationToken())
+                        .build();
+
+                // Stores the batch
+                res = s3.listObjectsV2(listObjects);
+                objects = res.contents();
+
+                // If there's more than one object, we store the most recent two keys
+                // If there is only one object, we keep the latest key from the previous batch,
+                // and store the most recent from this one
+                if (res.keyCount() > 1){
+                    keys.set(0, objects.get(objects.size() - 1).key());
+                    keys.set(1, objects.get(objects.size() - 2).key());
+                } else {
+                    keys.set(1, objects.get(0).key());
+                }
+            }
+
+            output = "";
+            StringBuilder str = new StringBuilder(output);
+            // Loops through the latest two keys
+            for (String key : keys){
+                // Gets the new object
+                GetObjectRequest objectRequest = GetObjectRequest
+                        .builder()
+                        .key(key)
+                        .bucket(bucketName)
+                        .build();
+
+                // Reads the new object
+                GZIPInputStream gzinpstr = new GZIPInputStream(s3.getObject(objectRequest));
+                InputStreamReader inpstr = new InputStreamReader(gzinpstr);
+                BufferedReader read = new BufferedReader(inpstr);
+                str.append(read.readLine());
+            }
+            // Stores the messages in output
+            output = str.toString();
 
         } catch (S3Exception e) {
             System.err.println(e.awsErrorDetails().errorMessage());

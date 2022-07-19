@@ -22,13 +22,30 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 }
 
+task cucumber(type: Test) {
+    useJUnitPlatform ()
+    systemProperty("cucumber.execution.parallel.enabled", true)
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperty("cucumber.plugin", "pretty, json:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.json, junit:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.xml")
+    systemProperty("cucumber.filter.tags", "@"+System.getenv("TEST_ENVIRONMENT"))
+}
+
+task cleanup(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set('Cleanup')
+}
+
+cleanup.configure {
+    mustRunAfter cucumber
+}
+
 tasks {
     test {
-        dependsOn assemble, testClasses
-        useJUnitPlatform ()
-        systemProperty("cucumber.execution.parallel.enabled", true)
-        systemProperty("cucumber.junit-platform.naming-strategy", "long")
-        systemProperty("cucumber.plugin", "pretty, json:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.json, junit:"+System.getenv("TEST_REPORT_ABSOLUTE_DIR")+"/result.xml")
-        systemProperty("cucumber.filter.tags", "@"+System.getenv("TEST_ENVIRONMENT"))
+        dependsOn assemble, testClasses, cucumber
+        if (System.getenv("TEST_ENVIRONMENT") != "staging"){
+            dependsOn cleanup
+        }
     }
 }
+
+

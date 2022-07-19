@@ -1,3 +1,4 @@
+@build @dev @staging
 Feature: IPV event data journey from firehose to S3
 
   Scenario Outline: Verify the data journey from firehose to S3
