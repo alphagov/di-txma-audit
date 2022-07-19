@@ -35,12 +35,12 @@ Conditions:
   IsProductionOrStaging: !And
     - !Not [!Equals [ !Ref Environment, dev]]
     - !Not [!Equals [ !Ref Environment, build]]
-  IsBuild: !Or
-    - !Equals [ !Ref Environment, dev ]
-    - !Equals [ !Ref Environment, build ]
   IsTestStage: !Or
     - !Equals [ !Ref Environment, build ]
     - !Equals [ !Ref Environment, staging ]
+  UseTestingInterval: !Or
+    - !Condition IsTestStage
+    - !Equals [ !Ref Environment, dev ]
   DeployTestPolicy: !And
     - !Condition IsTestStage
     - !Condition UseTestRole
@@ -247,7 +247,7 @@ Resources:
         BucketARN: !GetAtt MessageBatchBucket.Arn
         BufferingHints:
           IntervalInSeconds: !If
-            - IsBuild
+            - UseTestingInterval
             - 60
             - 900
           SizeInMBs: 128
